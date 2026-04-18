@@ -1,5 +1,6 @@
 import sys
 import os
+import random
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QLineEdit, QPushButton, QGroupBox, QFrame, QMessageBox,
@@ -10,7 +11,7 @@ from PyQt6.QtGui import QFont, QDoubleValidator, QMovie
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CUBE_GIF_PATH = os.path.join(SCRIPT_DIR, "assets", "gifs", "cube.gif")
-SPOOK_GIF_PATH = os.path.join(SCRIPT_DIR, "assets", "gifs", "spook.gif")
+SPOOKS_DIR = os.path.join(SCRIPT_DIR, "assets", "gifs", "spooks")
 
 
 class ClickableLabel(QLabel):
@@ -195,7 +196,7 @@ class RatioCalculator(QGroupBox):
 class CubeGifSection(QGroupBox):
     EASTER_EGG_DURATION_MS = 3000
 
-    def __init__(self, primary_path, easter_egg_path):
+    def __init__(self, primary_path, easter_egg_dir):
         super().__init__("The Cube")
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
@@ -210,7 +211,7 @@ class CubeGifSection(QGroupBox):
         self.label.clicked.connect(self._trigger_easter_egg)
 
         self._primary = self._load_movie(primary_path)
-        self._easter_egg = self._load_movie(easter_egg_path)
+        self._easter_eggs = self._load_easter_eggs(easter_egg_dir)
         self._active = None
 
         self._revert_timer = QTimer(self)
@@ -233,6 +234,17 @@ class CubeGifSection(QGroupBox):
         movie.jumpToFrame(0)
         return {"movie": movie, "size": movie.currentPixmap().size()}
 
+    def _load_easter_eggs(self, directory):
+        if not os.path.isdir(directory):
+            return []
+        entries = []
+        for name in sorted(os.listdir(directory)):
+            if name.lower().endswith(".gif"):
+                entry = self._load_movie(os.path.join(directory, name))
+                if entry:
+                    entries.append(entry)
+        return entries
+
     def _set_active(self, entry):
         if self._active and self._active is not entry:
             self._active["movie"].stop()
@@ -242,9 +254,11 @@ class CubeGifSection(QGroupBox):
         self._rescale_gif()
 
     def _trigger_easter_egg(self):
-        if not self._easter_egg or self._active is self._easter_egg:
+        if not self._easter_eggs:
             return
-        self._set_active(self._easter_egg)
+        if self._active is not None and self._active is not self._primary:
+            return
+        self._set_active(random.choice(self._easter_eggs))
         self._revert_timer.start(self.EASTER_EGG_DURATION_MS)
 
     def _revert_to_primary(self):
@@ -304,7 +318,7 @@ class MainWindow(QMainWindow):
         self.ratio_setter = RatioDirectSetter(self._set_ratio, self._get_ratio)
         self.converter = MoveConverter(self._get_ratio)
         self.ratio_calc = RatioCalculator(self._set_ratio, self.ratio_setter)
-        self.cube_section = CubeGifSection(CUBE_GIF_PATH, SPOOK_GIF_PATH)
+        self.cube_section = CubeGifSection(CUBE_GIF_PATH, SPOOKS_DIR)
 
         grid = QGridLayout()
         grid.setSpacing(12)
