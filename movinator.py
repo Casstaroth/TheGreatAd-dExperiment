@@ -1,8 +1,9 @@
 import sys
 import os
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QLineEdit, QPushButton, QGroupBox, QFrame, QMessageBox
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
+    QLabel, QLineEdit, QPushButton, QGroupBox, QFrame, QMessageBox,
+    QSizePolicy, QScrollArea
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QDoubleValidator, QMovie
@@ -184,15 +185,25 @@ class RatioCalculator(QGroupBox):
 class CubeGifSection(QGroupBox):
     def __init__(self, gif_path):
         super().__init__("The Cube")
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.label = QLabel()
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.label.setMinimumSize(1, 1)
+
+        self.movie = None
+        self._native_size = None
 
         if os.path.exists(gif_path):
-            self.movie = QMovie(gif_path)
-            if self.movie.isValid():
+            movie = QMovie(gif_path)
+            if movie.isValid():
+                movie.jumpToFrame(0)
+                self._native_size = movie.currentPixmap().size()
+                self.movie = movie
                 self.label.setMovie(self.movie)
                 self.movie.start()
             else:
@@ -202,21 +213,40 @@ class CubeGifSection(QGroupBox):
 
         layout.addWidget(self.label)
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._rescale_gif()
+
+    def _rescale_gif(self):
+        if not self.movie or not self._native_size or self._native_size.isEmpty():
+            return
+        target = self._native_size.scaled(
+            self.label.size(), Qt.AspectRatioMode.KeepAspectRatio
+        )
+        if not target.isEmpty():
+            self.movie.setScaledSize(target)
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.movement_ratio = 1.0
         self.setWindowTitle("The Great Movinator Unconfusinator")
-        self.setMinimumWidth(420)
+        self.setMinimumSize(600, 500)
+        self.resize(900, 700)
         self._build_ui()
 
     def _build_ui(self):
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.setCentralWidget(scroll)
+
         central = QWidget()
-        self.setCentralWidget(central)
-        layout = QVBoxLayout(central)
-        layout.setSpacing(16)
-        layout.setContentsMargins(16, 16, 16, 16)
+        scroll.setWidget(central)
+        outer = QVBoxLayout(central)
+        outer.setSpacing(12)
+        outer.setContentsMargins(16, 16, 16, 16)
 
         title = QLabel("The Great Movinator Unconfusinator")
         title_font = QFont()
@@ -224,24 +254,29 @@ class MainWindow(QMainWindow):
         title_font.setBold(True)
         title.setFont(title_font)
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(title)
+        outer.addWidget(title)
 
         divider = QFrame()
         divider.setFrameShape(QFrame.Shape.HLine)
-        layout.addWidget(divider)
+        outer.addWidget(divider)
 
         self.ratio_setter = RatioDirectSetter(self._set_ratio, self._get_ratio)
-
         self.converter = MoveConverter(self._get_ratio)
-
         self.ratio_calc = RatioCalculator(self._set_ratio, self.ratio_setter)
-
         self.cube_section = CubeGifSection(CUBE_GIF_PATH)
 
-        layout.addWidget(self.ratio_setter)
-        layout.addWidget(self.converter)
-        layout.addWidget(self.ratio_calc)
-        layout.addWidget(self.cube_section)
+        grid = QGridLayout()
+        grid.setSpacing(12)
+        grid.addWidget(self.converter,     0, 0)
+        grid.addWidget(self.ratio_setter,  0, 1)
+        grid.addWidget(self.cube_section,  1, 0)
+        grid.addWidget(self.ratio_calc,    1, 1)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
+        grid.setRowStretch(0, 0)
+        grid.setRowStretch(1, 1)
+
+        outer.addLayout(grid, stretch=1)
 
     def _get_ratio(self):
         return self.movement_ratio
@@ -251,9 +286,62 @@ class MainWindow(QMainWindow):
         self.ratio_setter.refresh()
 
 
+DARK_STYLESHEET = """
+QWidget {
+    background-color: #151515;
+    color: #ffffff;
+}
+QGroupBox {
+    border: 1px solid #ffffff;
+    border-radius: 4px;
+    margin-top: 10px;
+    padding-top: 8px;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    padding: 0 6px;
+    color: #ffffff;
+}
+QLineEdit {
+    background-color: #151515;
+    color: #ffffff;
+    border: 1px solid #ffffff;
+    border-radius: 3px;
+    padding: 4px;
+    selection-background-color: #444444;
+}
+QPushButton {
+    background-color: #151515;
+    color: #ffffff;
+    border: 1px solid #ffffff;
+    border-radius: 3px;
+    padding: 6px 12px;
+}
+QPushButton:hover {
+    background-color: #2a2a2a;
+}
+QPushButton:pressed {
+    background-color: #3a3a3a;
+}
+QFrame[frameShape="4"] {
+    color: #ffffff;
+    background-color: #ffffff;
+}
+QScrollArea {
+    border: none;
+}
+QMessageBox {
+    background-color: #151515;
+    color: #ffffff;
+}
+"""
+
+
 def main():
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
+    app.setStyleSheet(DARK_STYLESHEET)
     window = MainWindow()
     window.show()
     sys.exit(app.exec())
