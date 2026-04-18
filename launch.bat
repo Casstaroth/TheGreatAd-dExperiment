@@ -23,12 +23,14 @@ if not exist "%VENV_DIR%\Scripts\activate.bat" (
     )
 )
 
+call "%VENV_DIR%\Scripts\activate.bat"
+
 echo Installing/updating dependencies...
-"%VENV_DIR%\Scripts\pip.exe" install -r "%ROOT%requirements.txt" --quiet
+pip install -r "%ROOT%requirements.txt" --quiet
 if errorlevel 1 (
     echo Failed to install dependencies.
     pause
     exit /b 1
 )
 
-"%VENV_DIR%\Scripts\python.exe" "%ROOT%movinator.py"
+python "%ROOT%movinator.py"
