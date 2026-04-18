@@ -1,10 +1,14 @@
 import sys
+import os
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QGroupBox, QFrame, QMessageBox
 )
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont, QDoubleValidator
+from PyQt6.QtGui import QFont, QDoubleValidator, QMovie
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+CUBE_GIF_PATH = os.path.join(SCRIPT_DIR, "assets", "gifs", "cube.gif")
 
 
 class MoveConverter(QGroupBox):
@@ -177,6 +181,28 @@ class RatioCalculator(QGroupBox):
         self.moved_input.clear()
 
 
+class CubeGifSection(QGroupBox):
+    def __init__(self, gif_path):
+        super().__init__("The Cube")
+        layout = QVBoxLayout(self)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.label = QLabel()
+        self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        if os.path.exists(gif_path):
+            self.movie = QMovie(gif_path)
+            if self.movie.isValid():
+                self.label.setMovie(self.movie)
+                self.movie.start()
+            else:
+                self.label.setText("(Could not load cube.gif)")
+        else:
+            self.label.setText(f"(GIF not found: {gif_path})")
+
+        layout.addWidget(self.label)
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -210,9 +236,12 @@ class MainWindow(QMainWindow):
 
         self.ratio_calc = RatioCalculator(self._set_ratio, self.ratio_setter)
 
+        self.cube_section = CubeGifSection(CUBE_GIF_PATH)
+
         layout.addWidget(self.ratio_setter)
         layout.addWidget(self.converter)
         layout.addWidget(self.ratio_calc)
+        layout.addWidget(self.cube_section)
 
     def _get_ratio(self):
         return self.movement_ratio
