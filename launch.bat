@@ -1,13 +1,16 @@
 @echo off
 setlocal
 
-cd /d "%~dp0"
+set SCRIPT_DRIVE=%~d0
+set CURRENT_DRIVE=%CD:~0,2%
+if /i not "%SCRIPT_DRIVE%"=="%CURRENT_DRIVE%" %SCRIPT_DRIVE%
+cd "%~dp0"
 set ROOT=%~dp0
 set VENV_DIR=%ROOT%venv
 
 if exist "%ROOT%.git\" (
     echo Pulling latest updates...
-    git -C "%ROOT%" pull
+    git pull
 )
 
 if not exist "%VENV_DIR%\Scripts\activate.bat" (
