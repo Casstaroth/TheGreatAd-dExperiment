@@ -197,7 +197,7 @@ class CubeGifSection(QGroupBox):
     EASTER_EGG_DURATION_MS = 3000
 
     def __init__(self, primary_path, easter_egg_dir):
-        super().__init__("The Cube")
+        super().__init__()
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         layout = QVBoxLayout(self)
