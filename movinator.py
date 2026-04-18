@@ -5,11 +5,21 @@ from PyQt6.QtWidgets import (
     QLabel, QLineEdit, QPushButton, QGroupBox, QFrame, QMessageBox,
     QSizePolicy, QScrollArea
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QFont, QDoubleValidator, QMovie
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CUBE_GIF_PATH = os.path.join(SCRIPT_DIR, "assets", "gifs", "cube.gif")
+SPOOK_GIF_PATH = os.path.join(SCRIPT_DIR, "assets", "gifs", "spook.gif")
+
+
+class ClickableLabel(QLabel):
+    clicked = pyqtSignal()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(event)
 
 
 class MoveConverter(QGroupBox):
@@ -183,48 +193,79 @@ class RatioCalculator(QGroupBox):
 
 
 class CubeGifSection(QGroupBox):
-    def __init__(self, gif_path):
+    EASTER_EGG_DURATION_MS = 3000
+
+    def __init__(self, primary_path, easter_egg_path):
         super().__init__("The Cube")
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        self.label = QLabel()
+        self.label = ClickableLabel()
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.label.setMinimumSize(1, 1)
+        self.label.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.label.clicked.connect(self._trigger_easter_egg)
 
-        self.movie = None
-        self._native_size = None
+        self._primary = self._load_movie(primary_path)
+        self._easter_egg = self._load_movie(easter_egg_path)
+        self._active = None
 
-        if os.path.exists(gif_path):
-            movie = QMovie(gif_path)
-            if movie.isValid():
-                movie.jumpToFrame(0)
-                self._native_size = movie.currentPixmap().size()
-                self.movie = movie
-                self.label.setMovie(self.movie)
-                self.movie.start()
-            else:
-                self.label.setText("(Could not load cube.gif)")
+        self._revert_timer = QTimer(self)
+        self._revert_timer.setSingleShot(True)
+        self._revert_timer.timeout.connect(self._revert_to_primary)
+
+        if self._primary:
+            self._set_active(self._primary)
         else:
-            self.label.setText(f"(GIF not found: {gif_path})")
+            self.label.setText(f"(GIF not found: {primary_path})")
 
         layout.addWidget(self.label)
+
+    def _load_movie(self, path):
+        if not os.path.exists(path):
+            return None
+        movie = QMovie(path)
+        if not movie.isValid():
+            return None
+        movie.jumpToFrame(0)
+        return {"movie": movie, "size": movie.currentPixmap().size()}
+
+    def _set_active(self, entry):
+        if self._active and self._active is not entry:
+            self._active["movie"].stop()
+        self._active = entry
+        self.label.setMovie(entry["movie"])
+        entry["movie"].start()
+        self._rescale_gif()
+
+    def _trigger_easter_egg(self):
+        if not self._easter_egg or self._active is self._easter_egg:
+            return
+        self._set_active(self._easter_egg)
+        self._revert_timer.start(self.EASTER_EGG_DURATION_MS)
+
+    def _revert_to_primary(self):
+        if self._primary and self._active is not self._primary:
+            self._set_active(self._primary)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._rescale_gif()
 
     def _rescale_gif(self):
-        if not self.movie or not self._native_size or self._native_size.isEmpty():
+        if not self._active:
             return
-        target = self._native_size.scaled(
+        native = self._active["size"]
+        if native.isEmpty():
+            return
+        target = native.scaled(
             self.label.size(), Qt.AspectRatioMode.KeepAspectRatio
         )
         if not target.isEmpty():
-            self.movie.setScaledSize(target)
+            self._active["movie"].setScaledSize(target)
 
 
 class MainWindow(QMainWindow):
@@ -263,7 +304,7 @@ class MainWindow(QMainWindow):
         self.ratio_setter = RatioDirectSetter(self._set_ratio, self._get_ratio)
         self.converter = MoveConverter(self._get_ratio)
         self.ratio_calc = RatioCalculator(self._set_ratio, self.ratio_setter)
-        self.cube_section = CubeGifSection(CUBE_GIF_PATH)
+        self.cube_section = CubeGifSection(CUBE_GIF_PATH, SPOOK_GIF_PATH)
 
         grid = QGridLayout()
         grid.setSpacing(12)
