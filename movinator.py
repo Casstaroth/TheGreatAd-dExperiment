@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QSizePolicy, QScrollArea, QDialog
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QFont, QDoubleValidator, QMovie, QPixmap
+from PyQt6.QtGui import QFont, QDoubleValidator, QMovie, QPixmap, QTransform
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CUBE_GIF_PATH = os.path.join(SCRIPT_DIR, "assets", "gifs", "cube.gif")
@@ -28,6 +28,8 @@ class ClickableLabel(QLabel):
 
 
 class ClippyHelpDialog(QDialog):
+    no_clicked = pyqtSignal()
+
     def __init__(self, clippy_path, parent=None):
         super().__init__(parent)
         self._full_text = CLIPPY_HELP_TEXT
@@ -77,7 +79,7 @@ class ClippyHelpDialog(QDialog):
         yes_btn = QPushButton("Yes")
         no_btn = QPushButton("No")
         yes_btn.clicked.connect(self.accept)
-        no_btn.clicked.connect(self.reject)
+        no_btn.clicked.connect(self._handle_no_clicked)
         buttons.addWidget(yes_btn)
         buttons.addWidget(no_btn)
 
@@ -110,6 +112,67 @@ class ClippyHelpDialog(QDialog):
             return
         self._visible_chars += 1
         self.message_label.setText(self._full_text[:self._visible_chars])
+
+    def _handle_no_clicked(self):
+        self.no_clicked.emit()
+        self.reject()
+
+
+class ClippySpinDialog(QDialog):
+    SPIN_DURATION_MS = 3000
+    SPIN_INTERVAL_MS = 35
+
+    def __init__(self, clippy_path, parent=None):
+        super().__init__(parent)
+        self._angle = 0
+        self._pixmap = QPixmap(clippy_path)
+
+        self.setWindowTitle("Dimensional Assistance")
+        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+        self.setFixedSize(260, 260)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+
+        self.clippy_label = QLabel()
+        self.clippy_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.clippy_label.setFixedSize(220, 220)
+        layout.addWidget(self.clippy_label, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        self._spin_timer = QTimer(self)
+        self._spin_timer.timeout.connect(self._spin)
+        self._spin_timer.start(self.SPIN_INTERVAL_MS)
+        QTimer.singleShot(self.SPIN_DURATION_MS, self.accept)
+        self._spin()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        screen = self.screen()
+        if self.parentWidget() and self.parentWidget().screen():
+            screen = self.parentWidget().screen()
+        if screen:
+            available = screen.availableGeometry()
+            self.move(
+                available.left() + 24,
+                available.bottom() - self.height() - 24
+            )
+
+    def _spin(self):
+        if self._pixmap.isNull():
+            self.clippy_label.setText("(Clippy missing)")
+            self._spin_timer.stop()
+            return
+
+        base = self._pixmap.scaled(
+            150, 150,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation
+        )
+        transform = QTransform().rotate(self._angle)
+        self.clippy_label.setPixmap(
+            base.transformed(transform, Qt.TransformationMode.SmoothTransformation)
+        )
+        self._angle = (self._angle + 12) % 360
 
 
 class MoveConverter(QGroupBox):
@@ -303,6 +366,8 @@ class CubeGifSection(QGroupBox):
         self._easter_eggs = self._load_easter_eggs(easter_egg_dir)
         self._active = None
         self._easter_egg_trigger_count = 0
+        self._easter_egg_disabled = False
+        self._clippy_spin_only = False
         self._clippy_dialog = None
 
         self._revert_timer = QTimer(self)
@@ -345,6 +410,8 @@ class CubeGifSection(QGroupBox):
         self._rescale_gif()
 
     def _trigger_easter_egg(self):
+        if self._easter_egg_disabled:
+            return
         if not self._easter_eggs:
             return
         if self._active is not None and self._active is not self._primary:
@@ -362,9 +429,21 @@ class CubeGifSection(QGroupBox):
     def _show_clippy_help(self):
         if self._clippy_dialog and self._clippy_dialog.isVisible():
             return
-        self._clippy_dialog = ClippyHelpDialog(CLIPPY_PATH, self.window())
+        if self._clippy_spin_only:
+            self._clippy_dialog = ClippySpinDialog(CLIPPY_PATH, self.window())
+        else:
+            self._clippy_dialog = ClippyHelpDialog(CLIPPY_PATH, self.window())
+            self._clippy_dialog.accepted.connect(self._enable_clippy_spin_only)
+            self._clippy_dialog.no_clicked.connect(self._disable_easter_egg)
         self._clippy_dialog.finished.connect(self._clear_clippy_dialog)
         self._clippy_dialog.show()
+
+    def _enable_clippy_spin_only(self):
+        self._clippy_spin_only = True
+
+    def _disable_easter_egg(self):
+        self._easter_egg_disabled = True
+        self._revert_to_primary()
 
     def _clear_clippy_dialog(self):
         self._clippy_dialog = None
