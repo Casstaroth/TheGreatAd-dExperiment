@@ -4,14 +4,18 @@ import random
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QLineEdit, QPushButton, QGroupBox, QFrame, QMessageBox,
-    QSizePolicy, QScrollArea
+    QSizePolicy, QScrollArea, QDialog
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QFont, QDoubleValidator, QMovie
+from PyQt6.QtGui import QFont, QDoubleValidator, QMovie, QPixmap
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CUBE_GIF_PATH = os.path.join(SCRIPT_DIR, "assets", "gifs", "cube.gif")
 SPOOKS_DIR = os.path.join(SCRIPT_DIR, "assets", "gifs", "spooks")
+CLIPPY_PATH = os.path.join(SCRIPT_DIR, "assets", "Clippy", "ClippyBase.webp")
+CLIPPY_HELP_TEXT = (
+    "It seems you're fighting 9th dimensional horrors. Would you like some help?"
+)
 
 
 class ClickableLabel(QLabel):
@@ -21,6 +25,91 @@ class ClickableLabel(QLabel):
         if event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit()
         super().mousePressEvent(event)
+
+
+class ClippyHelpDialog(QDialog):
+    def __init__(self, clippy_path, parent=None):
+        super().__init__(parent)
+        self._full_text = CLIPPY_HELP_TEXT
+        self._visible_chars = 0
+
+        self.setWindowTitle("Dimensional Assistance")
+        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+        self.setFixedSize(520, 260)
+
+        outer = QHBoxLayout(self)
+        outer.setContentsMargins(12, 12, 12, 12)
+        outer.setSpacing(10)
+
+        self.clippy_label = QLabel()
+        self.clippy_label.setAlignment(Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignLeft)
+        pixmap = QPixmap(clippy_path)
+        if pixmap.isNull():
+            self.clippy_label.setText("(Clippy missing)")
+        else:
+            self.clippy_label.setPixmap(
+                pixmap.scaled(
+                    150, 190,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation
+                )
+            )
+
+        right = QVBoxLayout()
+        right.setSpacing(10)
+
+        self.message_label = QLabel()
+        self.message_label.setWordWrap(True)
+        self.message_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        self.message_label.setMinimumHeight(120)
+        self.message_label.setStyleSheet("""
+            QLabel {
+                background-color: #fff49a;
+                color: #111111;
+                border: 2px solid #4d3b00;
+                border-radius: 4px;
+                padding: 10px;
+            }
+        """)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch(1)
+        yes_btn = QPushButton("Yes")
+        no_btn = QPushButton("No")
+        yes_btn.clicked.connect(self.accept)
+        no_btn.clicked.connect(self.reject)
+        buttons.addWidget(yes_btn)
+        buttons.addWidget(no_btn)
+
+        right.addWidget(self.message_label)
+        right.addLayout(buttons)
+        right.addStretch(1)
+
+        outer.addWidget(self.clippy_label, stretch=0)
+        outer.addLayout(right, stretch=1)
+
+        self._scroll_timer = QTimer(self)
+        self._scroll_timer.timeout.connect(self._show_next_character)
+        self._scroll_timer.start(35)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        screen = self.screen()
+        if self.parentWidget() and self.parentWidget().screen():
+            screen = self.parentWidget().screen()
+        if screen:
+            available = screen.availableGeometry()
+            self.move(
+                available.left() + 24,
+                available.bottom() - self.height() - 24
+            )
+
+    def _show_next_character(self):
+        if self._visible_chars >= len(self._full_text):
+            self._scroll_timer.stop()
+            return
+        self._visible_chars += 1
+        self.message_label.setText(self._full_text[:self._visible_chars])
 
 
 class MoveConverter(QGroupBox):
@@ -213,6 +302,8 @@ class CubeGifSection(QGroupBox):
         self._primary = self._load_movie(primary_path)
         self._easter_eggs = self._load_easter_eggs(easter_egg_dir)
         self._active = None
+        self._easter_egg_trigger_count = 0
+        self._clippy_dialog = None
 
         self._revert_timer = QTimer(self)
         self._revert_timer.setSingleShot(True)
@@ -259,11 +350,24 @@ class CubeGifSection(QGroupBox):
         if self._active is not None and self._active is not self._primary:
             return
         self._set_active(random.choice(self._easter_eggs))
+        self._easter_egg_trigger_count += 1
+        if self._easter_egg_trigger_count % 9 == 0:
+            self._show_clippy_help()
         self._revert_timer.start(self.EASTER_EGG_DURATION_MS)
 
     def _revert_to_primary(self):
         if self._primary and self._active is not self._primary:
             self._set_active(self._primary)
+
+    def _show_clippy_help(self):
+        if self._clippy_dialog and self._clippy_dialog.isVisible():
+            return
+        self._clippy_dialog = ClippyHelpDialog(CLIPPY_PATH, self.window())
+        self._clippy_dialog.finished.connect(self._clear_clippy_dialog)
+        self._clippy_dialog.show()
+
+    def _clear_clippy_dialog(self):
+        self._clippy_dialog = None
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
